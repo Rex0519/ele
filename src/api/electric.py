@@ -19,7 +19,7 @@ class ElectricDataResponse(BaseModel):
 
 
 class AreaSummaryResponse(BaseModel):
-    area_id: int
+    area_id: str
     area_name: str | None
     total_value: float
     total_incr: float
@@ -59,7 +59,7 @@ def get_realtime_data(
 
 @router.get("/areas/{area_id}/summary", response_model=AreaSummaryResponse)
 def get_area_summary(
-    area_id: int,
+    area_id: str,
     period: str = Query("day", pattern="^(day|week|month)$"),
     db: Session = Depends(get_db),
 ):

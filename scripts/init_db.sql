@@ -3,7 +3,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 -- 区域配置
 CREATE TABLE IF NOT EXISTS config_area (
-    config_id BIGINT PRIMARY KEY,
+    config_id VARCHAR(50) PRIMARY KEY,
     parent_id VARCHAR(50),
     name VARCHAR(100),
     level INT,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS config_area (
 
 -- 项目配置
 CREATE TABLE IF NOT EXISTS config_item (
-    config_id BIGINT PRIMARY KEY,
+    config_id VARCHAR(50) PRIMARY KEY,
     parent_id VARCHAR(50),
     name VARCHAR(100),
     level INT,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS device (
 -- 设备-配置关联
 CREATE TABLE IF NOT EXISTS config_device (
     config_device_id BIGINT PRIMARY KEY,
-    config_id BIGINT,
+    config_id VARCHAR(50),
     device_id BIGINT,
     device_level INT,
     energy_type VARCHAR(20),

@@ -29,7 +29,7 @@ def load_excel_data(db: Session, data_dir: Path) -> None:
         if row.get("is_delete") == 1:
             continue
         db.merge(ConfigArea(
-            config_id=int(row["config_id"]),
+            config_id=str(row["config_id"]),
             parent_id=str(row["config_parent_id"]) if pd.notna(row["config_parent_id"]) else None,
             name=row["config_name"],
             level=int(row["config_level"]) if pd.notna(row["config_level"]) else None,
@@ -43,7 +43,7 @@ def load_excel_data(db: Session, data_dir: Path) -> None:
         if row.get("is_delete") == 1:
             continue
         db.merge(ConfigItem(
-            config_id=int(row["config_id"]),
+            config_id=str(row["config_id"]),
             parent_id=str(row["config_parent_id"]) if pd.notna(row["config_parent_id"]) else None,
             name=row["config_name"],
             level=int(row["config_level"]) if pd.notna(row["config_level"]) else None,
@@ -71,7 +71,7 @@ def load_excel_data(db: Session, data_dir: Path) -> None:
     for _, row in config_device_df.iterrows():
         db.merge(ConfigDevice(
             config_device_id=int(row["config_device_id"]),
-            config_id=int(row["config_id"]) if pd.notna(row["config_id"]) else None,
+            config_id=str(row["config_id"]) if pd.notna(row["config_id"]) else None,
             device_id=int(row["device_id"]) if pd.notna(row["device_id"]) else None,
             device_level=int(row["device_level"]) if pd.notna(row["device_level"]) else None,
             energy_type=row["energy_type"],

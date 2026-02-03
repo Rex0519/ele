@@ -11,7 +11,7 @@ class Base(DeclarativeBase):
 class ConfigArea(Base):
     __tablename__ = "config_area"
 
-    config_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    config_id: Mapped[str] = mapped_column(String(50), primary_key=True)
     parent_id: Mapped[str | None] = mapped_column(String(50))
     name: Mapped[str | None] = mapped_column(String(100))
     level: Mapped[int | None] = mapped_column(Integer)
@@ -23,7 +23,7 @@ class ConfigArea(Base):
 class ConfigItem(Base):
     __tablename__ = "config_item"
 
-    config_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    config_id: Mapped[str] = mapped_column(String(50), primary_key=True)
     parent_id: Mapped[str | None] = mapped_column(String(50))
     name: Mapped[str | None] = mapped_column(String(100))
     level: Mapped[int | None] = mapped_column(Integer)
@@ -50,7 +50,7 @@ class ConfigDevice(Base):
     __tablename__ = "config_device"
 
     config_device_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    config_id: Mapped[int | None] = mapped_column(BigInteger)
+    config_id: Mapped[str | None] = mapped_column(String(50))
     device_id: Mapped[int | None] = mapped_column(BigInteger)
     device_level: Mapped[int | None] = mapped_column(Integer)
     energy_type: Mapped[str | None] = mapped_column(String(20))
