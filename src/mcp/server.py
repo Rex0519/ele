@@ -2,12 +2,37 @@ from datetime import datetime, timedelta
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.server.sse import SseServerTransport
 from mcp.types import Tool, TextContent
 from sqlalchemy import func
+from starlette.routing import Route, Mount
+from starlette.responses import Response
 
 from src.db import get_db, ElectricData, Alert, ConfigArea, Device
 
 mcp_server = Server("electric-simulation")
+
+# SSE transport instance
+sse_transport = SseServerTransport("/mcp/messages/")
+
+
+async def handle_sse(request):
+    """SSE endpoint handler for MCP connections"""
+    async with sse_transport.connect_sse(
+        request.scope, request.receive, request._send
+    ) as (read_stream, write_stream):
+        await mcp_server.run(
+            read_stream, write_stream, mcp_server.create_initialization_options()
+        )
+    return Response()
+
+
+def create_sse_routes():
+    """Create Starlette routes for MCP SSE transport"""
+    return [
+        Route("/mcp/sse", endpoint=handle_sse),
+        Mount("/mcp/messages/", app=sse_transport.handle_post_message),
+    ]
 
 
 @mcp_server.list_tools()
