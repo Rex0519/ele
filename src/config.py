@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     api_port: int = 8000
     mcp_port: int = 8001
 
+    # SMS settings
+    sms_enabled: bool = False
+    sms_phones: list[str] = []
+
     class Config:
         env_file = ".env"
 
