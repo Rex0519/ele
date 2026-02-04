@@ -89,9 +89,16 @@ CREATE TABLE IF NOT EXISTS threshold_config (
 -- 设备特征（用于仿真）
 CREATE TABLE IF NOT EXISTS device_profile (
     point_id VARCHAR(50) PRIMARY KEY,
+    display_name VARCHAR(100),
+    device_type VARCHAR(20),
+    area_name VARCHAR(50),
+    original_point_id VARCHAR(50),
     mean_value DOUBLE PRECISION,
     std_value DOUBLE PRECISION,
     min_value DOUBLE PRECISION,
     max_value DOUBLE PRECISION,
     last_value DOUBLE PRECISION DEFAULT 0
 );
+
+CREATE INDEX IF NOT EXISTS idx_profile_area ON device_profile (area_name);
+CREATE INDEX IF NOT EXISTS idx_profile_type ON device_profile (device_type);

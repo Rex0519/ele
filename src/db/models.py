@@ -96,6 +96,10 @@ class DeviceProfile(Base):
     __tablename__ = "device_profile"
 
     point_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    display_name: Mapped[str | None] = mapped_column(String(100))
+    device_type: Mapped[str | None] = mapped_column(String(20))
+    area_name: Mapped[str | None] = mapped_column(String(50))
+    original_point_id: Mapped[str | None] = mapped_column(String(50))
     mean_value: Mapped[float | None] = mapped_column(Double)
     std_value: Mapped[float | None] = mapped_column(Double)
     min_value: Mapped[float | None] = mapped_column(Double)

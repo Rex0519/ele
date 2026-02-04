@@ -188,10 +188,13 @@ curl -X PUT http://localhost:8000/api/alerts/thresholds/123456 \
 
 | 工具名 | 说明 |
 |--------|------|
-| `query_electric_data` | 查询指定设备的电力数据 |
-| `get_area_summary` | 获取区域用电汇总 |
+| `list_areas` | 列出所有区域 |
+| `list_devices` | 列出设备，可按区域或类型过滤 |
+| `query_electric_data` | 查询指定设备的电力数据（支持名称模糊匹配） |
+| `get_area_summary` | 获取区域用电汇总（支持名称模糊匹配） |
+| `compare_usage` | 对比用电量（日/周/区域排名） |
 | `list_active_alerts` | 列出当前未解决告警 |
-| `analyze_anomaly` | 分析设备异常情况 |
+| `analyze_anomaly` | 分析设备异常情况（支持名称模糊匹配） |
 
 ### SSE 模式（Dify 等 AI 平台）
 
@@ -326,7 +329,8 @@ ele/
 │   ├── db/                 # 数据库层
 │   │   ├── models.py       # ORM 模型
 │   │   ├── connection.py   # 连接管理
-│   │   └── init_data.py    # 数据导入
+│   │   ├── init_data.py    # 数据导入
+│   │   └── device_parser.py # 设备名称解析器
 │   │
 │   ├── api/                # REST API
 │   │   ├── devices.py      # 设备接口

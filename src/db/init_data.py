@@ -4,10 +4,15 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from src.db.models import ConfigArea, ConfigItem, Device, ConfigDevice, DeviceProfile
+from src.db.device_parser import (
+    parse_device_name,
+    generate_point_id,
+    generate_display_name,
+)
 
 
 def extract_device_profiles(df: pd.DataFrame) -> dict:
-    """从电力数据中提取设备特征"""
+    """从电力数据中提取设备特征（旧方法，保留向后兼容）"""
     profiles = {}
     for point_id, group in df.groupby("point_id"):
         profiles[point_id] = {
@@ -18,6 +23,40 @@ def extract_device_profiles(df: pd.DataFrame) -> dict:
             "max_value": group["incr"].max(),
             "last_value": group["value"].iloc[-1] if len(group) > 0 else 0,
         }
+    return profiles
+
+
+def extract_device_profiles_from_devices(device_df: pd.DataFrame) -> list[dict]:
+    """从设备信息中生成 DeviceProfile（新方法，使用可读 point_id）"""
+    area_type_seq: dict[tuple[str, str], int] = {}
+    profiles = []
+
+    for _, row in device_df.iterrows():
+        device_name = row["device_name"]
+        parsed = parse_device_name(device_name)
+        area = parsed["area"]
+        device_type = parsed["device_type"]
+
+        key = (area, device_type)
+        seq = area_type_seq.get(key, 0) + 1
+        area_type_seq[key] = seq
+
+        point_id = generate_point_id(area, device_type, seq)
+        display_name = generate_display_name(area, device_type, seq)
+
+        profiles.append({
+            "point_id": point_id,
+            "display_name": display_name,
+            "device_type": device_type,
+            "area_name": area,
+            "original_point_id": None,
+            "mean_value": 10.0,
+            "std_value": 2.0,
+            "min_value": 0.0,
+            "max_value": 50.0,
+            "last_value": 0,
+        })
+
     return profiles
 
 
@@ -78,10 +117,9 @@ def load_excel_data(db: Session, data_dir: Path) -> None:
             config_type=row["config_type"],
         ))
 
-    # 提取设备特征
-    electric_df = pd.read_excel(data_dir / "electric.xls")
-    profiles = extract_device_profiles(electric_df)
-    for profile in profiles.values():
+    # 生成设备特征（使用可读 point_id）
+    profiles = extract_device_profiles_from_devices(device_df)
+    for profile in profiles:
         db.merge(DeviceProfile(**profile))
 
     db.commit()
