@@ -19,10 +19,10 @@ class SimulationGenerator:
     def __init__(self, db: Session):
         self.db = db
 
-    def generate_hourly_data(self) -> list[ElectricData]:
+    def generate_hourly_data(self, target_time: datetime | None = None) -> list[ElectricData]:
         """为所有设备生成一小时的数据"""
-        now = datetime.now()
-        hour = now.hour
+        ts = target_time or datetime.now()
+        hour = ts.hour
         records = []
 
         profiles = self.db.query(DeviceProfile).all()
@@ -35,7 +35,7 @@ class SimulationGenerator:
             new_value = (profile.last_value or 0) + incr
 
             record = ElectricData(
-                time=now,
+                time=ts,
                 device_id=hash(profile.point_id) % (10**18),
                 point_id=profile.point_id,
                 value=round(new_value, 2),
