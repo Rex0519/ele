@@ -9,13 +9,13 @@ import uvicorn
 from src.config import settings
 from src.db import get_db
 from src.db.init_data import load_excel_data
+from src.db.maintenance import DataMaintenance
 from src.scheduler import start_scheduler
 from src.mcp.server import create_sse_routes
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时初始化
     data_dir = Path("data_extracted")
     if data_dir.exists():
         db = next(get_db())
@@ -26,6 +26,18 @@ async def lifespan(app: FastAPI):
             print(f"Data load error: {e}")
         finally:
             db.close()
+
+    db = next(get_db())
+    try:
+        maintenance = DataMaintenance(db)
+        deleted = maintenance.cleanup_expired_alerts()
+        if deleted:
+            print(f"Cleaned up {deleted} expired alerts")
+        backfilled = maintenance.backfill_missing_data()
+        if backfilled:
+            print(f"Backfilled {backfilled} hours of missing data")
+    finally:
+        db.close()
 
     scheduler = start_scheduler()
     print("Scheduler started")
