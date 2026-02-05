@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS electric_data (
 );
 
 SELECT create_hypertable('electric_data', 'time', if_not_exists => TRUE);
+SELECT add_retention_policy('electric_data', INTERVAL '30 days', if_not_exists => TRUE);
 
 CREATE INDEX IF NOT EXISTS idx_electric_device ON electric_data (device_id, time DESC);
 CREATE INDEX IF NOT EXISTS idx_electric_point ON electric_data (point_id, time DESC);
