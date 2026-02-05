@@ -27,7 +27,7 @@ class DataMaintenance:
         if last_time is None:
             start = now - timedelta(days=days)
         else:
-            start = last_time
+            start = last_time.replace(tzinfo=None) if last_time.tzinfo else last_time
 
         start = start.replace(minute=0, second=0, microsecond=0)
         current = start + timedelta(hours=1)
