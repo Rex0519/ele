@@ -84,7 +84,10 @@ uv run python -m src.main
 应用启动时会自动：
 1. 导入 Excel 数据到数据库
 2. 提取设备特征用于仿真
-3. 启动定时调度器（每小时整点执行）
+3. 生成告警阈值配置（首次启动，477 条）
+4. 回补数据空洞（检测 30 天内所有缺失小时并补全）
+5. 清理 30 天前的过期告警
+6. 启动定时调度器（每小时整点执行）
 
 ### 4. 部署 Dify
 
@@ -251,11 +254,14 @@ SMS_PHONES='["13800138000","13900139000"]'
 ### 生成算法
 
 ```
-增量 = max(0, 历史均值 × 时段系数 + 随机波动)
+基础值 = 历史均值 × 时段系数
+正常增量 = max(0, 基础值 + 随机波动)      # 97% 概率
+异常增量 = 基础值 × 2.5~4.0（激增）       # 1.5% 概率
+         | 基础值 × 0.02~0.15（骤降）     # 1.5% 概率
 累计值 = 上次累计值 + 增量
 ```
 
-随机波动服从正态分布，标准差为历史标准差的 10%。
+正常波动服从正态分布 N(0, std × 0.3)。异常数据约占 3%，确保告警系统有足够的触发场景用于演示。
 
 ## 业务口径补充
 
@@ -276,29 +282,38 @@ SMS_PHONES='["13800138000","13900139000"]'
 
 ### 仿真数据生成口径
 
-每小时任务遍历全部设备画像，按“时段系数 + 随机扰动”计算增量：
+每小时任务遍历全部设备画像，按"时段系数 + 随机扰动"计算增量：
 
-- `增量 = max(0, mean_value × 时段系数 + noise)`，其中 `noise = N(0, std_value × 0.1)`。
+- 97% 正常数据：`增量 = max(0, mean_value × 时段系数 + noise)`，其中 `noise = N(0, std_value × 0.3)`。
+- 3% 异常数据：`增量 = 基础值 × [2.5, 4.0]`（激增）或 `基础值 × [0.02, 0.15]`（骤降）。
 - `value = last_value + 增量`，并回写到 `device_profile.last_value`。
 - 每条仿真数据的 `device_id` 取 `hash(point_id) % 10^18` 作为稳定标识。
 
 ### 告警检测口径
 
-- **阈值告警**：基于最新一条电力增量 `incr` 与阈值配置（`threshold_config`）判断是否越界。
-- **趋势告警**：取“最近一小时内的最新值”对比“昨日同时间段（前后 1 小时窗口）”的增量，超过 1.5 倍或低于 0.3 倍触发。
+- **阈值告警**：基于最新一条电力增量 `incr` 与阈值配置（`threshold_config`）判断是否越界。默认阈值范围 [2.0, 18.0]，正常数据约 5~14，异常数据可达 0.1~52。
+- **趋势告警**：取"最近一小时内的最新值"对比"昨日同时间段（前后 1 小时窗口）"的增量，超过 1.5 倍或低于 0.3 倍触发。
 - **离线告警**：设备 2 小时内无数据上报触发 `HIGH` 告警，且未解决告警不会重复生成。
 - **短信通知**：仅对 `HIGH/CRITICAL` 告警发送，最多展示前 5 条信息。
+
+### 数据维护
+
+- **自动回补**：启动时检测 30 天内所有小时级数据空洞，逐小时回补。容器重启导致的数据中断会自动修复。
+- **过期清理**：自动清理 30 天前的告警记录。
+- **数据保留**：TimescaleDB 自动删除 30 天前的 `electric_data`（retention policy）。
 
 ## 告警规则
 
 ### 1. 阈值告警
 
-当电力增量超出配置的阈值范围时触发。
+当电力增量超出配置的阈值范围时触发。系统启动时自动为所有设备生成默认阈值配置（min=2.0, max=18.0, severity=WARNING），可通过 API 调整。
 
 ```sql
--- 配置示例：设备 123 的增量超过 100 时告警
-INSERT INTO threshold_config (device_id, min_value, max_value, severity)
-VALUES (123, 0, 100, 'WARNING');
+-- 查看当前阈值配置
+SELECT point_id, min_value, max_value, severity FROM threshold_config LIMIT 5;
+
+-- 手动调整某设备阈值
+UPDATE threshold_config SET max_value = 15.0, severity = 'HIGH' WHERE point_id = 'XBL-KT-01';
 ```
 
 ### 2. 趋势异常
@@ -334,11 +349,24 @@ SELECT count(*) FROM device;
 -- 查看最近的电力数据
 SELECT * FROM electric_data ORDER BY time DESC LIMIT 10;
 
+-- 查看异常数据（超出阈值范围）
+SELECT point_id, time, incr FROM electric_data WHERE incr > 18 OR incr < 2 ORDER BY time DESC LIMIT 20;
+
 -- 查看未解决的告警
 SELECT * FROM alert WHERE resolved_at IS NULL;
 
+-- 查看告警统计
+SELECT alert_type, severity, count(*) FROM alert GROUP BY alert_type, severity;
+
 -- 查看设备特征
 SELECT point_id, mean_value, std_value FROM device_profile LIMIT 10;
+
+-- 查看阈值配置
+SELECT point_id, min_value, max_value, severity FROM threshold_config LIMIT 10;
+
+-- 检查数据连续性（最近48小时）
+SELECT time_bucket('1 hour', time) AS hour, count(*) FROM electric_data
+GROUP BY hour ORDER BY hour DESC LIMIT 48;
 ```
 
 ## 项目结构
@@ -362,6 +390,7 @@ ele/
 │   │   ├── models.py       # ORM 模型
 │   │   ├── connection.py   # 连接管理
 │   │   ├── init_data.py    # 数据导入
+│   │   ├── maintenance.py  # 数据维护（回补/清理）
 │   │   └── device_parser.py # 设备名称解析器
 │   │
 │   ├── api/                # REST API
