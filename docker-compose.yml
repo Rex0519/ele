@@ -22,7 +22,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://admin:${DB_PASSWORD:-password}@db:5432/electric
+      DATABASE_URL: postgresql+psycopg://admin:${DB_PASSWORD:-password}@db:5432/electric
     ports:
       - "8000:8000"
       - "8001:8001"

@@ -30,7 +30,7 @@ def test_device_parser_to_mcp_workflow():
     db = MagicMock()
     db.query.return_value.filter.return_value.limit.return_value.all.return_value = [mock_profile]
 
-    result = asyncio.run(_list_devices(db, {"area": "西南"}))
+    result = _list_devices(db, {"area": "西南"})
     assert "XNL-ZM-01" in result[0].text
     assert "西南-照明-01号" in result[0].text
 
@@ -63,5 +63,5 @@ def test_extract_profiles_to_query_workflow():
     data_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
     db.query.side_effect = [profile_query, data_query]
 
-    result = asyncio.run(_query_electric_data(db, {"device_name": "东北空调"}))
+    result = _query_electric_data(db, {"device_name": "东北空调"})
     assert "东北-空调-01号" in result[0].text

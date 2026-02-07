@@ -3,27 +3,12 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from src.db.models import ConfigArea, ConfigItem, Device, ConfigDevice, DeviceProfile
+from src.db.models import ConfigArea, ConfigItem, Device, ConfigDevice, DeviceProfile, ThresholdConfig
 from src.db.device_parser import (
     parse_device_name,
     generate_point_id,
     generate_display_name,
 )
-
-
-def extract_device_profiles(df: pd.DataFrame) -> dict:
-    """从电力数据中提取设备特征（旧方法，保留向后兼容）"""
-    profiles = {}
-    for point_id, group in df.groupby("point_id"):
-        profiles[point_id] = {
-            "point_id": point_id,
-            "mean_value": group["incr"].mean(),
-            "std_value": group["incr"].std() if len(group) > 1 else 0,
-            "min_value": group["incr"].min(),
-            "max_value": group["incr"].max(),
-            "last_value": group["value"].iloc[-1] if len(group) > 0 else 0,
-        }
-    return profiles
 
 
 def extract_device_profiles_from_devices(device_df: pd.DataFrame) -> list[dict]:
@@ -46,10 +31,10 @@ def extract_device_profiles_from_devices(device_df: pd.DataFrame) -> list[dict]:
 
         profiles.append({
             "point_id": point_id,
+            "device_id": int(row["device_id"]),
             "display_name": display_name,
             "device_type": device_type,
             "area_name": area,
-            "original_point_id": None,
             "mean_value": 10.0,
             "std_value": 2.0,
             "min_value": 0.0,
@@ -121,5 +106,18 @@ def load_excel_data(db: Session, data_dir: Path) -> None:
     profiles = extract_device_profiles_from_devices(device_df)
     for profile in profiles:
         db.merge(DeviceProfile(**profile))
+
+    # 生成阈值配置（基于正常值范围，异常值会触发告警）
+    existing = db.query(ThresholdConfig).count()
+    if existing == 0:
+        for profile in profiles:
+            db.add(ThresholdConfig(
+                device_id=profile["device_id"],
+                point_id=profile["point_id"],
+                metric="incr",
+                min_value=2.0,
+                max_value=18.0,
+                severity="WARNING",
+            ))
 
     db.commit()

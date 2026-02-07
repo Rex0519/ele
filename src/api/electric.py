@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.db import get_db, ElectricData, ConfigArea
+from src.db import get_db, ElectricData, ConfigArea, DeviceProfile
 
 router = APIRouter(prefix="/electric", tags=["electric"])
 
@@ -67,7 +67,7 @@ def get_area_summary(
     if not area:
         raise HTTPException(status_code=404, detail="Area not found")
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     start = now - timedelta(
         days=1 if period == "day" else 7 if period == "week" else 30,
     )
@@ -76,9 +76,10 @@ def get_area_summary(
         db.query(
             func.sum(ElectricData.value).label("total_value"),
             func.sum(ElectricData.incr).label("total_incr"),
-            func.count(func.distinct(ElectricData.device_id)).label("device_count"),
+            func.count(func.distinct(ElectricData.point_id)).label("device_count"),
         )
-        .filter(ElectricData.time >= start)
+        .join(DeviceProfile, ElectricData.point_id == DeviceProfile.point_id)
+        .filter(ElectricData.time >= start, DeviceProfile.area_name == area.name)
         .first()
     )
 
@@ -96,7 +97,7 @@ def get_statistics(
     period: str = Query("day", pattern="^(day|week|month)$"),
     db: Session = Depends(get_db),
 ):
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     start = now - timedelta(
         days=1 if period == "day" else 7 if period == "week" else 30,
     )

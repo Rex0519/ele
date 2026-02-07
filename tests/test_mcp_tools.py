@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 from unittest.mock import MagicMock
 
@@ -23,7 +21,7 @@ def test_list_areas_returns_area_list(mock_db):
         mock_area1, mock_area2, mock_area3,
     ]
 
-    result = asyncio.run(_list_areas(mock_db, {}))
+    result = _list_areas(mock_db, {})
 
     assert len(result) == 1
     assert "西北楼" in result[0].text
@@ -36,7 +34,7 @@ def test_list_areas_empty(mock_db):
 
     mock_db.query.return_value.filter.return_value.all.return_value = []
 
-    result = asyncio.run(_list_areas(mock_db, {}))
+    result = _list_areas(mock_db, {})
 
     assert "暂无" in result[0].text
 
@@ -59,7 +57,7 @@ def test_list_devices_filter_by_area(mock_db):
     # area only: db.query().filter(area).limit().all()
     mock_db.query.return_value.filter.return_value.limit.return_value.all.return_value = [mock_p1, mock_p2]
 
-    result = asyncio.run(_list_devices(mock_db, {"area": "西北"}))
+    result = _list_devices(mock_db, {"area": "西北"})
 
     assert "西北-照明-01号" in result[0].text
     assert "西北-空调-01号" in result[0].text
@@ -71,7 +69,7 @@ def test_list_devices_empty(mock_db):
     # no filters: db.query().limit().all()
     mock_db.query.return_value.limit.return_value.all.return_value = []
 
-    result = asyncio.run(_list_devices(mock_db, {}))
+    result = _list_devices(mock_db, {})
 
     assert "未找到" in result[0].text
 
@@ -82,7 +80,7 @@ def test_compare_usage_day(mock_db):
     # scalar() for today total
     mock_db.query.return_value.filter.return_value.scalar.return_value = 1000.0
 
-    result = asyncio.run(_compare_usage(mock_db, {"compare_type": "day"}))
+    result = _compare_usage(mock_db, {"compare_type": "day"})
 
     assert "今日" in result[0].text or "用电" in result[0].text
 
@@ -90,7 +88,7 @@ def test_compare_usage_day(mock_db):
 def test_compare_usage_unsupported(mock_db):
     from src.mcp.server import _compare_usage
 
-    result = asyncio.run(_compare_usage(mock_db, {"compare_type": "unknown"}))
+    result = _compare_usage(mock_db, {"compare_type": "unknown"})
 
     assert "不支持" in result[0].text
 
@@ -123,7 +121,7 @@ def test_query_electric_data_by_name_single_match(mock_db):
 
     db.query.side_effect = [profile_query, data_query]
 
-    result = asyncio.run(_query_electric_data(db, {"device_name": "西北照明"}))
+    result = _query_electric_data(db, {"device_name": "西北照明"})
 
     assert "西北-照明-01号" in result[0].text
     assert "无数据" in result[0].text
@@ -137,7 +135,7 @@ def test_query_electric_data_by_name_no_match(mock_db):
     profile_query.filter.return_value.limit.return_value.all.return_value = []
     db.query.return_value = profile_query
 
-    result = asyncio.run(_query_electric_data(db, {"device_name": "不存在的设备"}))
+    result = _query_electric_data(db, {"device_name": "不存在的设备"})
 
     assert "未找到" in result[0].text
 
@@ -145,7 +143,7 @@ def test_query_electric_data_by_name_no_match(mock_db):
 def test_query_electric_data_missing_params(mock_db):
     from src.mcp.server import _query_electric_data
 
-    result = asyncio.run(_query_electric_data(mock_db, {}))
+    result = _query_electric_data(mock_db, {})
 
     assert "请提供" in result[0].text
 
@@ -161,17 +159,17 @@ def test_get_area_summary_by_name(mock_db):
     # area lookup: db.query().filter().first() → mock_area
     area_query = MagicMock()
     area_query.filter.return_value.first.return_value = mock_area
-    # stats: db.query().filter().first() → stats
+    # stats: db.query().join().filter().first() → stats
     mock_stats = MagicMock()
     mock_stats.total = 1000.0
     mock_stats.avg = 10.0
     mock_stats.count = 100
     stats_query = MagicMock()
-    stats_query.filter.return_value.first.return_value = mock_stats
+    stats_query.join.return_value.filter.return_value.first.return_value = mock_stats
 
     db.query.side_effect = [area_query, stats_query]
 
-    result = asyncio.run(_get_area_summary(db, {"area_name": "西北"}))
+    result = _get_area_summary(db, {"area_name": "西北"})
 
     assert "西北楼" in result[0].text
 
@@ -187,15 +185,15 @@ def test_analyze_anomaly_by_name(mock_db):
     # profile lookup
     profile_query = MagicMock()
     profile_query.filter.return_value.limit.return_value.all.return_value = [mock_profile]
-    # electric data
+    # electric data (now with order_by)
     data_query = MagicMock()
-    data_query.filter.return_value.all.return_value = []
+    data_query.filter.return_value.order_by.return_value.all.return_value = []
     # alerts
     alert_query = MagicMock()
     alert_query.filter.return_value.all.return_value = []
 
     db.query.side_effect = [profile_query, data_query, alert_query]
 
-    result = asyncio.run(_analyze_anomaly(db, {"device_name": "西北照明"}))
+    result = _analyze_anomaly(db, {"device_name": "西北照明"})
 
     assert "西北-照明-01号" in result[0].text

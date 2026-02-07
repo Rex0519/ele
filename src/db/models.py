@@ -72,6 +72,7 @@ class Alert(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     device_id: Mapped[int | None] = mapped_column(BigInteger)
+    point_id: Mapped[str | None] = mapped_column(String(50))
     alert_type: Mapped[str] = mapped_column(String(20))
     severity: Mapped[str] = mapped_column(String(10))
     message: Mapped[str | None] = mapped_column(Text)
@@ -86,6 +87,7 @@ class ThresholdConfig(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     device_id: Mapped[int | None] = mapped_column(BigInteger)
+    point_id: Mapped[str | None] = mapped_column(String(50))
     metric: Mapped[str] = mapped_column(String(20), default="incr")
     min_value: Mapped[float | None] = mapped_column(Double)
     max_value: Mapped[float | None] = mapped_column(Double)
@@ -96,10 +98,10 @@ class DeviceProfile(Base):
     __tablename__ = "device_profile"
 
     point_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    device_id: Mapped[int | None] = mapped_column(BigInteger)
     display_name: Mapped[str | None] = mapped_column(String(100))
     device_type: Mapped[str | None] = mapped_column(String(20))
     area_name: Mapped[str | None] = mapped_column(String(50))
-    original_point_id: Mapped[str | None] = mapped_column(String(50))
     mean_value: Mapped[float | None] = mapped_column(Double)
     std_value: Mapped[float | None] = mapped_column(Double)
     min_value: Mapped[float | None] = mapped_column(Double)

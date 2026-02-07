@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import asyncio
+from datetime import datetime, timedelta, timezone
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -121,35 +122,39 @@ async def list_tools():
     ]
 
 
-@mcp_server.call_tool()
-async def call_tool(name: str, arguments: dict):
+def _execute_tool(name: str, arguments: dict):
+    handlers = {
+        "query_electric_data": _query_electric_data,
+        "get_area_summary": _get_area_summary,
+        "list_active_alerts": _list_active_alerts,
+        "analyze_anomaly": _analyze_anomaly,
+        "list_areas": _list_areas,
+        "list_devices": _list_devices,
+        "compare_usage": _compare_usage,
+    }
+    handler = handlers.get(name)
+    if not handler:
+        return [TextContent(type="text", text=f"Unknown tool: {name}")]
     db = next(get_db())
     try:
-        if name == "query_electric_data":
-            return await _query_electric_data(db, arguments)
-        elif name == "get_area_summary":
-            return await _get_area_summary(db, arguments)
-        elif name == "list_active_alerts":
-            return await _list_active_alerts(db, arguments)
-        elif name == "analyze_anomaly":
-            return await _analyze_anomaly(db, arguments)
-        elif name == "list_areas":
-            return await _list_areas(db, arguments)
-        elif name == "list_devices":
-            return await _list_devices(db, arguments)
-        elif name == "compare_usage":
-            return await _compare_usage(db, arguments)
-        else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        return handler(db, arguments)
     finally:
         db.close()
 
 
-async def _query_electric_data(db, args: dict):
+@mcp_server.call_tool()
+async def call_tool(name: str, arguments: dict):
+    try:
+        return await asyncio.to_thread(_execute_tool, name, arguments)
+    except Exception as e:
+        return [TextContent(type="text", text=f"工具执行出错: {e}")]
+
+
+def _query_electric_data(db, args: dict):
     device_id = args.get("device_id")
     device_name = args.get("device_name")
     hours = args.get("hours", 24)
-    start = datetime.now() - timedelta(hours=hours)
+    start = datetime.now(timezone.utc) - timedelta(hours=hours)
 
     point_id = None
     display_name = None
@@ -212,7 +217,7 @@ async def _query_electric_data(db, args: dict):
     return [TextContent(type="text", text="请提供 device_id 或 device_name")]
 
 
-async def _get_area_summary(db, args: dict):
+def _get_area_summary(db, args: dict):
     area_id = args.get("area_id")
     area_name = args.get("area_name")
     period = args.get("period", "day")
@@ -231,7 +236,7 @@ async def _get_area_summary(db, args: dict):
     else:
         return [TextContent(type="text", text="请提供 area_id 或 area_name")]
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     if period == "day":
         start = now - timedelta(days=1)
     elif period == "week":
@@ -245,7 +250,8 @@ async def _get_area_summary(db, args: dict):
             func.avg(ElectricData.incr).label("avg"),
             func.count().label("count"),
         )
-        .filter(ElectricData.time >= start)
+        .join(DeviceProfile, ElectricData.point_id == DeviceProfile.point_id)
+        .filter(ElectricData.time >= start, DeviceProfile.area_name == area.name)
         .first()
     )
 
@@ -258,7 +264,7 @@ async def _get_area_summary(db, args: dict):
     return [TextContent(type="text", text=text)]
 
 
-async def _list_active_alerts(db, args: dict):
+def _list_active_alerts(db, args: dict):
     severity = args.get("severity")
 
     query = db.query(Alert).filter(Alert.resolved_at.is_(None))
@@ -277,12 +283,12 @@ async def _list_active_alerts(db, args: dict):
     return [TextContent(type="text", text="\n".join(lines))]
 
 
-async def _analyze_anomaly(db, args: dict):
+def _analyze_anomaly(db, args: dict):
     device_id = args.get("device_id")
     device_name = args.get("device_name")
 
     display = None
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     if device_name:
         profiles = db.query(DeviceProfile).filter(
@@ -304,12 +310,13 @@ async def _analyze_anomaly(db, args: dict):
         recent = (
             db.query(ElectricData)
             .filter(ElectricData.point_id == point_id, ElectricData.time >= now - timedelta(hours=24))
+            .order_by(ElectricData.time.desc())
             .all()
         )
 
         alerts = (
             db.query(Alert)
-            .filter(Alert.device_id == hash(point_id) % (10**18), Alert.resolved_at.is_(None))
+            .filter(Alert.point_id == point_id, Alert.resolved_at.is_(None))
             .all()
         )
 
@@ -319,17 +326,22 @@ async def _analyze_anomaly(db, args: dict):
             return [TextContent(type="text", text=f"设备 {device_id} 不存在")]
         display = f"{device.device_name} ({device.device_no})"
 
-        recent = (
-            db.query(ElectricData)
-            .filter(ElectricData.device_id == device_id, ElectricData.time >= now - timedelta(hours=24))
-            .all()
-        )
-
-        alerts = (
-            db.query(Alert)
-            .filter(Alert.device_id == device_id, Alert.resolved_at.is_(None))
-            .all()
-        )
+        profile = db.query(DeviceProfile).filter(DeviceProfile.device_id == device_id).first()
+        if profile:
+            recent = (
+                db.query(ElectricData)
+                .filter(ElectricData.point_id == profile.point_id, ElectricData.time >= now - timedelta(hours=24))
+                .order_by(ElectricData.time.desc())
+                .all()
+            )
+            alerts = (
+                db.query(Alert)
+                .filter(Alert.point_id == profile.point_id, Alert.resolved_at.is_(None))
+                .all()
+            )
+        else:
+            recent = []
+            alerts = []
     else:
         return [TextContent(type="text", text="请提供 device_id 或 device_name")]
 
@@ -360,7 +372,7 @@ async def _analyze_anomaly(db, args: dict):
     return [TextContent(type="text", text=text)]
 
 
-async def _list_areas(db, args: dict):
+def _list_areas(db, args: dict):
     areas = db.query(ConfigArea).filter(ConfigArea.is_delete == 0).all()
 
     if not areas:
@@ -373,7 +385,7 @@ async def _list_areas(db, args: dict):
     return [TextContent(type="text", text="\n".join(lines))]
 
 
-async def _list_devices(db, args: dict):
+def _list_devices(db, args: dict):
     area = args.get("area")
     device_type = args.get("device_type")
 
@@ -401,10 +413,10 @@ async def _list_devices(db, args: dict):
     return [TextContent(type="text", text="\n".join(lines))]
 
 
-async def _compare_usage(db, args: dict):
+def _compare_usage(db, args: dict):
     compare_type = args.get("compare_type", "day")
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     if compare_type == "day":
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)

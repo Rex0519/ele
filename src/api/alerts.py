@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
@@ -14,6 +14,7 @@ class AlertResponse(BaseModel):
 
     id: int
     device_id: int | None
+    point_id: str | None
     alert_type: str
     severity: str
     message: str | None
@@ -28,6 +29,7 @@ class ThresholdConfigResponse(BaseModel):
 
     id: int
     device_id: int | None
+    point_id: str | None
     metric: str
     min_value: float | None
     max_value: float | None
@@ -44,6 +46,7 @@ def _alert_to_response(a: Alert) -> AlertResponse:
     return AlertResponse(
         id=a.id,
         device_id=a.device_id,
+        point_id=a.point_id,
         alert_type=a.alert_type,
         severity=a.severity,
         message=a.message,
@@ -86,7 +89,7 @@ def resolve_alert(alert_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Alert not found")
     if alert.resolved_at:
         raise HTTPException(status_code=400, detail="Alert already resolved")
-    alert.resolved_at = datetime.now()
+    alert.resolved_at = datetime.now(timezone.utc)
     db.commit()
     return {"status": "resolved", "alert_id": alert_id}
 
@@ -96,19 +99,19 @@ def list_thresholds(db: Session = Depends(get_db)):
     return db.query(ThresholdConfig).all()
 
 
-@router.put("/thresholds/{device_id}")
+@router.put("/thresholds/{point_id}")
 def update_threshold(
-    device_id: int,
+    point_id: str,
     update: ThresholdConfigUpdate,
     db: Session = Depends(get_db),
 ):
     config = (
         db.query(ThresholdConfig)
-        .filter(ThresholdConfig.device_id == device_id)
+        .filter(ThresholdConfig.point_id == point_id)
         .first()
     )
     if not config:
-        config = ThresholdConfig(device_id=device_id)
+        config = ThresholdConfig(point_id=point_id)
         db.add(config)
 
     if update.min_value is not None:
@@ -119,4 +122,4 @@ def update_threshold(
         config.severity = update.severity
 
     db.commit()
-    return {"status": "updated", "device_id": device_id}
+    return {"status": "updated", "point_id": point_id}

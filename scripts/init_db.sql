@@ -60,11 +60,13 @@ SELECT add_retention_policy('electric_data', INTERVAL '30 days', if_not_exists =
 
 CREATE INDEX IF NOT EXISTS idx_electric_device ON electric_data (device_id, time DESC);
 CREATE INDEX IF NOT EXISTS idx_electric_point ON electric_data (point_id, time DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_electric_unique ON electric_data (time, point_id);
 
 -- 告警表
 CREATE TABLE IF NOT EXISTS alert (
     id BIGSERIAL PRIMARY KEY,
     device_id BIGINT,
+    point_id VARCHAR(50),
     alert_type VARCHAR(20) NOT NULL,
     severity VARCHAR(10) NOT NULL,
     message TEXT,
@@ -75,12 +77,14 @@ CREATE TABLE IF NOT EXISTS alert (
 );
 
 CREATE INDEX IF NOT EXISTS idx_alert_device ON alert (device_id);
+CREATE INDEX IF NOT EXISTS idx_alert_point ON alert (point_id);
 CREATE INDEX IF NOT EXISTS idx_alert_active ON alert (resolved_at) WHERE resolved_at IS NULL;
 
 -- 阈值配置
 CREATE TABLE IF NOT EXISTS threshold_config (
     id SERIAL PRIMARY KEY,
     device_id BIGINT,
+    point_id VARCHAR(50),
     metric VARCHAR(20) DEFAULT 'incr',
     min_value DOUBLE PRECISION,
     max_value DOUBLE PRECISION,
@@ -90,10 +94,10 @@ CREATE TABLE IF NOT EXISTS threshold_config (
 -- 设备特征（用于仿真）
 CREATE TABLE IF NOT EXISTS device_profile (
     point_id VARCHAR(50) PRIMARY KEY,
+    device_id BIGINT,
     display_name VARCHAR(100),
     device_type VARCHAR(20),
     area_name VARCHAR(50),
-    original_point_id VARCHAR(50),
     mean_value DOUBLE PRECISION,
     std_value DOUBLE PRECISION,
     min_value DOUBLE PRECISION,

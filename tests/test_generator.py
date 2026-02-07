@@ -29,7 +29,7 @@ def test_generate_increment():
 
 
 from unittest.mock import MagicMock
-from datetime import datetime
+from datetime import datetime, timezone
 from src.db.models import DeviceProfile, ElectricData
 
 
@@ -52,10 +52,11 @@ def test_generate_hourly_data_with_target_time():
     assert records[0].time == target
     assert records[0].point_id == "test-device-001"
     assert records[0].value > 100.0
+    mock_db.execute.assert_called_once()
 
 
 def test_generate_hourly_data_default_uses_now():
-    """不传 target_time 时行为不变"""
+    """不传 target_time 时使用当前整点"""
     mock_db = MagicMock()
     profile = DeviceProfile(
         point_id="test-device-002",
@@ -69,5 +70,23 @@ def test_generate_hourly_data_default_uses_now():
     records = gen.generate_hourly_data()
 
     assert len(records) == 1
-    now = datetime.now()
-    assert abs((records[0].time - now).total_seconds()) < 5
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    assert records[0].time == now
+
+
+def test_generate_hourly_data_truncates_time():
+    """传入非整点时间时截断到整点"""
+    mock_db = MagicMock()
+    profile = DeviceProfile(
+        point_id="test-device-003",
+        mean_value=5.0,
+        std_value=1.0,
+        last_value=50.0,
+    )
+    mock_db.query.return_value.all.return_value = [profile]
+
+    target = datetime(2026, 1, 15, 14, 35, 22, 123456)
+    gen = SimulationGenerator(mock_db)
+    records = gen.generate_hourly_data(target_time=target)
+
+    assert records[0].time == datetime(2026, 1, 15, 14, 0, 0)

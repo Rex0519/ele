@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from src.db import get_db, Device, ElectricData
+from src.db import get_db, Device, ElectricData, DeviceProfile
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -45,13 +45,23 @@ def get_device_data(
     limit: int = Query(100, le=1000),
     db: Session = Depends(get_db),
 ):
-    rows = (
-        db.query(ElectricData)
-        .filter(ElectricData.device_id == device_id)
-        .order_by(ElectricData.time.desc())
-        .limit(limit)
-        .all()
-    )
+    profile = db.query(DeviceProfile).filter(DeviceProfile.device_id == device_id).first()
+    if profile:
+        rows = (
+            db.query(ElectricData)
+            .filter(ElectricData.point_id == profile.point_id)
+            .order_by(ElectricData.time.desc())
+            .limit(limit)
+            .all()
+        )
+    else:
+        rows = (
+            db.query(ElectricData)
+            .filter(ElectricData.device_id == device_id)
+            .order_by(ElectricData.time.desc())
+            .limit(limit)
+            .all()
+        )
     return [
         DeviceDataResponse(time=r.time.isoformat(), value=r.value, incr=r.incr)
         for r in rows
