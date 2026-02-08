@@ -1,5 +1,5 @@
 from .detector import AlertDetector
+from .feishu import FeishuSender
 from .rules import AlertType, Severity
-from .sms import SmsSender, DummySmsSender
 
-__all__ = ["AlertDetector", "AlertType", "Severity", "SmsSender", "DummySmsSender"]
+__all__ = ["AlertDetector", "AlertType", "Severity", "FeishuSender"]
