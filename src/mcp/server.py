@@ -105,7 +105,7 @@ async def list_tools():
         ),
         Tool(
             name="compare_usage",
-            description="对比用电量",
+            description="对比用电量（支持按设备类型筛选、指定日期对比）",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -113,10 +113,45 @@ async def list_tools():
                     "compare_type": {
                         "type": "string",
                         "enum": ["day", "week", "areas"],
-                        "description": "对比类型：day(今天vs昨天)、week(本周vs上周)、areas(区域排名)",
+                        "description": "对比类型：day(基准日vs前一日)、week(本周vs上周)、areas(区域排名)",
                         "default": "day",
                     },
+                    "device_type": {
+                        "type": "string",
+                        "description": "设备类型筛选（如：照明、空调、扶梯），不填则统计全部类型",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "基准日期(YYYY-MM-DD)，默认今天。day模式下对比该日与前一日",
+                    },
                 },
+            },
+        ),
+        Tool(
+            name="usage_ranking",
+            description="按区域或设备类型维度统计用电排名",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "dimension": {
+                        "type": "string",
+                        "enum": ["area", "device_type"],
+                        "description": "聚合维度：area(按区域排名)、device_type(按设备类型排名)",
+                    },
+                    "device_type": {
+                        "type": "string",
+                        "description": "设备类型筛选（dimension=area时有用，如只看照明设备）",
+                    },
+                    "area": {
+                        "type": "string",
+                        "description": "区域名筛选（dimension=device_type时有用，如只看西北楼）",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "统计日期(YYYY-MM-DD)，默认今天",
+                    },
+                },
+                "required": ["dimension"],
             },
         ),
     ]
@@ -131,6 +166,7 @@ def _execute_tool(name: str, arguments: dict):
         "list_areas": _list_areas,
         "list_devices": _list_devices,
         "compare_usage": _compare_usage,
+        "usage_ranking": _usage_ranking,
     }
     handler = handlers.get(name)
     if not handler:
@@ -413,71 +449,90 @@ def _list_devices(db, args: dict):
     return [TextContent(type="text", text="\n".join(lines))]
 
 
+def _parse_base_date(date_str: str | None) -> datetime:
+    if date_str:
+        d = datetime.strptime(date_str, "%Y-%m-%d")
+        return d.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc)
+
+
+def _day_range(base: datetime) -> tuple[datetime, datetime]:
+    start = base.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start, start + timedelta(days=1)
+
+
+def _sum_incr_query(db, start, end, device_type=None):
+    q = db.query(func.sum(ElectricData.incr))
+    if device_type:
+        q = q.join(DeviceProfile, ElectricData.point_id == DeviceProfile.point_id).filter(
+            DeviceProfile.device_type == device_type
+        )
+    return q.filter(ElectricData.time >= start, ElectricData.time < end).scalar() or 0
+
+
 def _compare_usage(db, args: dict):
     compare_type = args.get("compare_type", "day")
+    device_type = args.get("device_type")
+    base = _parse_base_date(args.get("date"))
 
-    now = datetime.now(timezone.utc)
+    type_label = f"({device_type})" if device_type else ""
 
     if compare_type == "day":
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        yesterday_start = today_start - timedelta(days=1)
+        day_start, day_end = _day_range(base)
+        prev_start = day_start - timedelta(days=1)
 
-        today_total = db.query(func.sum(ElectricData.incr)).filter(
-            ElectricData.time >= today_start
-        ).scalar() or 0
+        current_total = _sum_incr_query(db, day_start, day_end, device_type)
+        prev_total = _sum_incr_query(db, prev_start, day_start, device_type)
 
-        yesterday_total = db.query(func.sum(ElectricData.incr)).filter(
-            ElectricData.time >= yesterday_start,
-            ElectricData.time < today_start
-        ).scalar() or 0
+        diff = current_total - prev_total
+        pct = (diff / prev_total * 100) if prev_total else 0
 
-        diff = today_total - yesterday_total
-        pct = (diff / yesterday_total * 100) if yesterday_total else 0
-
+        cur_date = day_start.strftime("%m-%d")
+        prev_date = prev_start.strftime("%m-%d")
         text = (
-            f"今日用电对比:\n"
-            f"今日总用电: {today_total:.1f} 度\n"
-            f"昨日总用电: {yesterday_total:.1f} 度\n"
+            f"用电对比{type_label}:\n"
+            f"{cur_date} 总用电: {current_total:.1f} 度\n"
+            f"{prev_date} 总用电: {prev_total:.1f} 度\n"
             f"变化: {diff:+.1f} 度 ({pct:+.1f}%)"
         )
 
     elif compare_type == "week":
-        week_start = now - timedelta(days=now.weekday())
+        week_start = base - timedelta(days=base.weekday())
         week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
         last_week_start = week_start - timedelta(weeks=1)
 
-        this_week = db.query(func.sum(ElectricData.incr)).filter(
-            ElectricData.time >= week_start
-        ).scalar() or 0
-
-        last_week = db.query(func.sum(ElectricData.incr)).filter(
-            ElectricData.time >= last_week_start,
-            ElectricData.time < week_start
-        ).scalar() or 0
+        this_week = _sum_incr_query(db, week_start, base, device_type)
+        last_week = _sum_incr_query(db, last_week_start, week_start, device_type)
 
         diff = this_week - last_week
         pct = (diff / last_week * 100) if last_week else 0
 
         text = (
-            f"本周用电对比:\n"
+            f"本周用电对比{type_label}:\n"
             f"本周总用电: {this_week:.1f} 度\n"
             f"上周总用电: {last_week:.1f} 度\n"
             f"变化: {diff:+.1f} 度 ({pct:+.1f}%)"
         )
 
     elif compare_type == "areas":
-        results = db.query(
+        day_start, day_end = _day_range(base)
+
+        q = db.query(
             DeviceProfile.area_name,
             func.sum(ElectricData.incr).label("total")
         ).join(
             ElectricData, ElectricData.point_id == DeviceProfile.point_id
-        ).filter(
-            ElectricData.time >= now - timedelta(days=1)
-        ).group_by(DeviceProfile.area_name).order_by(
+        ).filter(ElectricData.time >= day_start, ElectricData.time < day_end)
+
+        if device_type:
+            q = q.filter(DeviceProfile.device_type == device_type)
+
+        results = q.group_by(DeviceProfile.area_name).order_by(
             func.sum(ElectricData.incr).desc()
         ).limit(10).all()
 
-        lines = ["区域用电排名（今日）:"]
+        date_label = day_start.strftime("%m-%d")
+        lines = [f"区域用电排名{type_label}（{date_label}）:"]
         total = sum(r.total or 0 for r in results)
         for i, r in enumerate(results, 1):
             pct = (r.total / total * 100) if total else 0
@@ -488,6 +543,52 @@ def _compare_usage(db, args: dict):
         text = "不支持的对比类型"
 
     return [TextContent(type="text", text=text)]
+
+
+def _usage_ranking(db, args: dict):
+    dimension = args.get("dimension", "area")
+    device_type = args.get("device_type")
+    area = args.get("area")
+    base = _parse_base_date(args.get("date"))
+    day_start, day_end = _day_range(base)
+
+    group_col = DeviceProfile.area_name if dimension == "area" else DeviceProfile.device_type
+
+    q = db.query(
+        group_col.label("group_key"),
+        func.sum(ElectricData.incr).label("total"),
+        func.count(func.distinct(DeviceProfile.point_id)).label("device_count"),
+    ).join(
+        ElectricData, ElectricData.point_id == DeviceProfile.point_id
+    ).filter(ElectricData.time >= day_start, ElectricData.time < day_end)
+
+    if device_type:
+        q = q.filter(DeviceProfile.device_type == device_type)
+    if area:
+        q = q.filter(DeviceProfile.area_name.ilike(f"%{area}%"))
+
+    results = q.group_by(group_col).order_by(func.sum(ElectricData.incr).desc()).all()
+
+    if not results:
+        return [TextContent(type="text", text="该条件下无用电数据")]
+
+    date_label = day_start.strftime("%Y-%m-%d")
+    dim_label = "区域" if dimension == "area" else "设备类型"
+    filters = []
+    if device_type:
+        filters.append(f"类型={device_type}")
+    if area:
+        filters.append(f"区域={area}")
+    filter_label = f"（{', '.join(filters)}）" if filters else ""
+
+    grand_total = sum(r.total or 0 for r in results)
+    lines = [f"{dim_label}用电排名{filter_label}（{date_label}）:"]
+    for i, r in enumerate(results, 1):
+        pct = (r.total / grand_total * 100) if grand_total else 0
+        lines.append(f"  {i}. {r.group_key}: {r.total:.1f} 度 ({pct:.1f}%) [{r.device_count}台设备]")
+    lines.append(f"合计: {grand_total:.1f} 度")
+
+    return [TextContent(type="text", text="\n".join(lines))]
 
 
 async def run_mcp_server():

@@ -48,16 +48,28 @@
 - "能源中心本月用电" → `{"area_name": "能源中心", "period": "month"}`
 
 ### 5. compare_usage — 用电对比
-`compare_type`：`day`(今天vs昨天)、`week`(本周vs上周)、`areas`(区域排名)。
+`compare_type`：`day`(基准日vs前一日)、`week`(本周vs上周)、`areas`(区域排名)。
+可选 `device_type` 按设备类型筛选，`date`(YYYY-MM-DD) 指定基准日（默认今天）。
 - "今天比昨天用电多吗" → `{"compare_type": "day"}`
+- "昨天照明比前天多吗" → `{"compare_type": "day", "device_type": "照明", "date": "昨天日期"}`
 - "哪个区域用电最多" → `{"compare_type": "areas"}`
+- "昨天哪个区域空调用电最多" → `{"compare_type": "areas", "device_type": "空调", "date": "昨天日期"}`
 
-### 6. list_active_alerts — 当前告警
+### 6. usage_ranking — 用电排名
+按区域或设备类型维度统计用电排名。`dimension` 必填：`area`(按区域)、`device_type`(按类型)。
+可选 `device_type`、`area`、`date`(YYYY-MM-DD) 进行筛选。
+- "昨天照明各区域排名" → `{"dimension": "area", "device_type": "照明", "date": "昨天日期"}`
+- "西北楼各类型用电排名" → `{"dimension": "device_type", "area": "西北"}`
+- "今天各区域用电排名" → `{"dimension": "area"}`
+
+对于复合对比问题（如"昨天照明哪个区域最高，比前天高多少"），先用 `usage_ranking` 分别查两天数据，再自行计算差异。
+
+### 7. list_active_alerts — 当前告警
 可选按严重级别过滤：INFO / WARNING / HIGH / CRITICAL。
 - "有什么告警" → `{}`
 - "有没有严重告警" → `{"severity": "HIGH"}`
 
-### 7. analyze_anomaly — 设备异常分析
+### 8. analyze_anomaly — 设备异常分析
 优先用 `device_name`。返回设备状态、24h 数据量和未解决告警。
 - "01号空调正常吗" → `{"device_name": "空调01"}`
 - "238层风机有没有异常" → `{"device_name": "238层风机"}`
