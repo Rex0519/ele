@@ -129,7 +129,7 @@ async def list_tools():
         ),
         Tool(
             name="usage_ranking",
-            description="按区域或设备类型维度统计用电排名",
+            description="按区域或设备类型维度统计用电排名，支持两日对比",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -149,6 +149,10 @@ async def list_tools():
                     "date": {
                         "type": "string",
                         "description": "统计日期(YYYY-MM-DD)，默认今天",
+                    },
+                    "compare_date": {
+                        "type": "string",
+                        "description": "对比日期(YYYY-MM-DD)，传入后自动对比两天数据并显示差异",
                     },
                 },
                 "required": ["dimension"],
@@ -549,25 +553,27 @@ def _usage_ranking(db, args: dict):
     dimension = args.get("dimension", "area")
     device_type = args.get("device_type")
     area = args.get("area")
+    compare_date_str = args.get("compare_date")
     base = _parse_base_date(args.get("date"))
     day_start, day_end = _day_range(base)
 
     group_col = DeviceProfile.area_name if dimension == "area" else DeviceProfile.device_type
 
-    q = db.query(
-        group_col.label("group_key"),
-        func.sum(ElectricData.incr).label("total"),
-        func.count(func.distinct(DeviceProfile.point_id)).label("device_count"),
-    ).join(
-        ElectricData, ElectricData.point_id == DeviceProfile.point_id
-    ).filter(ElectricData.time >= day_start, ElectricData.time < day_end)
+    def _rank_query(start, end):
+        q = db.query(
+            group_col.label("group_key"),
+            func.sum(ElectricData.incr).label("total"),
+            func.count(func.distinct(DeviceProfile.point_id)).label("device_count"),
+        ).join(
+            ElectricData, ElectricData.point_id == DeviceProfile.point_id
+        ).filter(ElectricData.time >= start, ElectricData.time < end)
+        if device_type:
+            q = q.filter(DeviceProfile.device_type == device_type)
+        if area:
+            q = q.filter(DeviceProfile.area_name.ilike(f"%{area}%"))
+        return {r.group_key: r for r in q.group_by(group_col).order_by(func.sum(ElectricData.incr).desc()).all()}
 
-    if device_type:
-        q = q.filter(DeviceProfile.device_type == device_type)
-    if area:
-        q = q.filter(DeviceProfile.area_name.ilike(f"%{area}%"))
-
-    results = q.group_by(group_col).order_by(func.sum(ElectricData.incr).desc()).all()
+    results = _rank_query(day_start, day_end)
 
     if not results:
         return [TextContent(type="text", text="该条件下无用电数据")]
@@ -581,11 +587,41 @@ def _usage_ranking(db, args: dict):
         filters.append(f"区域={area}")
     filter_label = f"（{', '.join(filters)}）" if filters else ""
 
-    grand_total = sum(r.total or 0 for r in results)
+    if compare_date_str:
+        cmp_base = _parse_base_date(compare_date_str)
+        cmp_start, cmp_end = _day_range(cmp_base)
+        cmp_results = _rank_query(cmp_start, cmp_end)
+        cmp_label = cmp_start.strftime("%Y-%m-%d")
+
+        sorted_keys = sorted(results.keys(), key=lambda k: results[k].total or 0, reverse=True)
+        grand_total = sum(r.total or 0 for r in results.values())
+        lines = [f"{dim_label}用电排名{filter_label}（{date_label} vs {cmp_label}）:"]
+        max_increase_key, max_increase_val = None, 0
+        max_decrease_key, max_decrease_val = None, 0
+        for i, key in enumerate(sorted_keys, 1):
+            cur = results[key].total or 0
+            prev = (cmp_results[key].total or 0) if key in cmp_results else 0
+            diff = cur - prev
+            pct = (diff / prev * 100) if prev else 0
+            lines.append(f"  {i}. {key}: {cur:.1f}度 ← {prev:.1f}度 ({diff:+.1f}度, {pct:+.1f}%)")
+            if diff > max_increase_val:
+                max_increase_key, max_increase_val = key, diff
+            if diff < max_decrease_val:
+                max_decrease_key, max_decrease_val = key, diff
+        lines.append(f"合计: {grand_total:.1f} 度")
+        if max_increase_key:
+            lines.append(f"最大增幅: {max_increase_key} (+{max_increase_val:.1f}度)")
+        if max_decrease_key:
+            lines.append(f"最大降幅: {max_decrease_key} ({max_decrease_val:.1f}度)")
+        return [TextContent(type="text", text="\n".join(lines))]
+
+    grand_total = sum(r.total or 0 for r in results.values())
+    sorted_keys = sorted(results.keys(), key=lambda k: results[k].total or 0, reverse=True)
     lines = [f"{dim_label}用电排名{filter_label}（{date_label}）:"]
-    for i, r in enumerate(results, 1):
+    for i, key in enumerate(sorted_keys, 1):
+        r = results[key]
         pct = (r.total / grand_total * 100) if grand_total else 0
-        lines.append(f"  {i}. {r.group_key}: {r.total:.1f} 度 ({pct:.1f}%) [{r.device_count}台设备]")
+        lines.append(f"  {i}. {key}: {r.total:.1f} 度 ({pct:.1f}%) [{r.device_count}台设备]")
     lines.append(f"合计: {grand_total:.1f} 度")
 
     return [TextContent(type="text", text="\n".join(lines))]

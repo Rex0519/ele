@@ -58,11 +58,12 @@
 ### 6. usage_ranking — 用电排名
 按区域或设备类型维度统计用电排名。`dimension` 必填：`area`(按区域)、`device_type`(按类型)。
 可选 `device_type`、`area`、`date`(YYYY-MM-DD) 进行筛选。
+传入 `compare_date` 可一次性对比两天数据，自动计算差异和增降幅。
 - "昨天照明各区域排名" → `{"dimension": "area", "device_type": "照明", "date": "昨天日期"}`
+- "昨天照明哪个区域最高，比前天高多少" → `{"dimension": "area", "device_type": "照明", "date": "昨天日期", "compare_date": "前天日期"}`
 - "西北楼各类型用电排名" → `{"dimension": "device_type", "area": "西北"}`
-- "今天各区域用电排名" → `{"dimension": "area"}`
 
-对于复合对比问题（如"昨天照明哪个区域最高，比前天高多少"），先用 `usage_ranking` 分别查两天数据，再自行计算差异。
+重要：需要对比两天数据时，务必使用 `compare_date` 参数一次完成，不要分两次调用。
 
 ### 7. list_active_alerts — 当前告警
 可选按严重级别过滤：INFO / WARNING / HIGH / CRITICAL。
