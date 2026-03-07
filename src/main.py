@@ -1,9 +1,7 @@
-import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from starlette.routing import Mount
 import uvicorn
 
 from src.config import settings
@@ -11,7 +9,7 @@ from src.db import get_db
 from src.db.init_data import load_excel_data
 from src.db.maintenance import DataMaintenance
 from src.scheduler import start_scheduler
-from src.mcp.server import create_sse_routes
+from src.mcp.server import create_mcp_routes, get_session_manager
 
 
 @asynccontextmanager
@@ -41,17 +39,19 @@ async def lifespan(app: FastAPI):
 
     scheduler = start_scheduler()
     print("Scheduler started")
-    print(f"MCP SSE endpoint available at http://{settings.api_host}:{settings.api_port}/mcp/sse")
 
-    yield
+    sm = get_session_manager()
+    async with sm.run():
+        print(f"MCP endpoint available at http://{settings.api_host}:{settings.api_port}/mcp")
+        yield
 
     scheduler.shutdown()
 
 
 app = FastAPI(title="Electric Simulation API", lifespan=lifespan)
 
-# Mount MCP SSE routes
-for route in create_sse_routes():
+# Mount MCP Streamable HTTP routes
+for route in create_mcp_routes():
     app.routes.append(route)
 
 

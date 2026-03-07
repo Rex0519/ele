@@ -1,23 +1,23 @@
 # 电力数据仿真系统
 
-基于真实电力数据的仿真系统，支持自动生成符合实际用电规律的模拟数据，提供 REST API 和 MCP Server 供 AI 查询，并具备智能告警和短信通知能力。通过 Dify 平台提供自然语言对话界面，供管理层直接查询用电数据。
+基于真实电力数据的仿真系统，支持自动生成符合实际用电规律的模拟数据，提供 REST API 和 MCP Server 供 AI 查询，并具备智能告警和飞书通知能力。通过 FlowiseAI 平台提供自然语言对话界面，供管理层直接查询用电数据。
 
 ## 功能特性
 
-- **自然语言查询**：通过 Dify Agent 对话界面，用自然语言查询用电数据和告警信息
+- **自然语言查询**：通过 FlowiseAI Agent 对话界面，用自然语言查询用电数据和告警信息
 - **数据仿真**：基于历史数据统计特征，按时段规律（夜间低谷、早晚高峰）自动生成仿真电力数据
 - **智能告警**：支持阈值告警、趋势异常检测（同比激增/骤降）、设备离线检测
 - **短信通知**：检测到高级别告警时自动发送短信通知（支持接入第三方短信平台）
 - **REST API**：完整的设备管理、电力数据查询、告警管理接口
-- **MCP Server**：支持 stdio 和 SSE 双传输模式，供 Claude Desktop 和 Dify 等 AI 平台调用
+- **MCP Server**：支持 stdio 和 Streamable HTTP 双传输模式，供 Claude Desktop 和 FlowiseAI 等 AI 平台调用
 - **定时调度**：每小时自动生成仿真数据并执行告警检测
 
 ## 系统架构
 
 ```
-管理层用户 ──自然语言对话──→ Dify Agent ──MCP/SSE──→ FastAPI + MCP Server ──→ PostgreSQL
+管理层用户 ──自然语言对话──→ FlowiseAI Agent ──MCP/HTTP──→ FastAPI + MCP Server ──→ PostgreSQL
                                                             ↑
-                                        APScheduler ──告警检测──→ 短信平台 API
+                                        APScheduler ──告警检测──→ 飞书 Webhook
 ```
 
 ## 技术栈
@@ -28,8 +28,8 @@
 | 后端框架 | FastAPI |
 | ORM | SQLAlchemy 2.0 |
 | 调度器 | APScheduler |
-| AI 集成 | MCP SDK (stdio + SSE) |
-| AI 前端 | Dify (Docker 自部署) |
+| AI 集成 | MCP SDK (stdio + Streamable HTTP) |
+| AI 前端 | FlowiseAI (Docker) |
 | 部署 | Docker Compose |
 
 ## 快速开始
@@ -89,34 +89,29 @@ uv run python -m src.main
 5. 清理 30 天前的过期告警
 6. 启动定时调度器（每小时整点执行）
 
-### 4. 部署 Dify
+### 4. 配置 FlowiseAI
+
+FlowiseAI 已集成到 docker-compose，启动全部服务：
 
 ```bash
-# 克隆 Dify
-git clone --depth 1 --branch "$(curl -s https://api.github.com/repos/langgenius/dify/releases/latest | jq -r .tag_name)" https://github.com/langgenius/dify.git
-
-# 启动 Dify
-cd dify/docker
-cp .env.example .env
-docker compose up -d
+docker-compose up -d
 ```
 
-访问 http://localhost/install 创建管理员账号，然后：
+访问 http://localhost:13000 进入 FlowiseAI，然后：
 
-1. **Tools → MCP → Add MCP Server (HTTP)**
-   - URL: `http://host.docker.internal:8000/mcp/sse`
-   - Name: `电力仿真系统`
-   - ID: `electric-simulation`
-2. **创建 Agent 应用** → 添加 MCP 工具 → 粘贴系统提示词（见 `docs/dify-system-prompt.md`）
-3. **发布应用** → 管理层通过浏览器访问对话界面
+1. **创建 Agentflow** → 添加 Custom MCP Tool
+   - URL: `http://app:8000/mcp`
+   - 点击 Refresh Actions 加载工具列表
+2. **配置 System Message** → 粘贴系统提示词（见 `docs/system-prompt.md`）
+3. **保存并测试对话**
 
 ### 5. 访问服务
 
 | 服务 | 地址 |
 |------|------|
-| Dify 对话界面 | http://localhost |
+| FlowiseAI | http://localhost:13000 |
 | API 文档 | http://localhost:8000/docs |
-| MCP SSE 端点 | http://localhost:8000/mcp/sse |
+| MCP 端点 | http://localhost:8000/mcp |
 | 健康检查 | http://localhost:8000/health |
 
 ## 数据库连接
@@ -185,7 +180,7 @@ curl -X PUT http://localhost:8000/api/alerts/thresholds/123456 \
 
 ## MCP Server
 
-系统提供 MCP Server，支持 stdio 和 SSE 双传输模式。
+系统提供 MCP Server，支持 stdio 和 Streamable HTTP 双传输模式。
 
 ### 可用工具
 
@@ -199,9 +194,9 @@ curl -X PUT http://localhost:8000/api/alerts/thresholds/123456 \
 | `list_active_alerts` | 列出当前未解决告警 |
 | `analyze_anomaly` | 分析设备异常情况（支持名称模糊匹配） |
 
-### SSE 模式（Dify 等 AI 平台）
+### Streamable HTTP 模式（FlowiseAI 等 AI 平台）
 
-应用启动后 SSE 端点自动可用：`http://localhost:8000/mcp/sse`
+应用启动后 MCP 端点自动可用：`http://localhost:8000/mcp`
 
 ### stdio 模式（Claude Desktop）
 
@@ -269,8 +264,8 @@ SMS_PHONES='["13800138000","13900139000"]'
 
 - **点位编号（point_id）**：根据解析出的区域与设备类型生成 `区域缩写-设备类型缩写-序号`（例如 `XBL-KT-01`）。
 - **显示名称**：`区域-设备类型-序号号`（例如 `西北-空调-01号`）。
-- **区域解析**：优先匹配设备名中的楼层与方位缩写（如 `F-WS`、`F-WN` 等），其次匹配 243/238/249 等层号，未命中则归为“其他”。
-- **设备类型解析**：通过设备名内置关键字或缩写（如 `kt`、`fj`、`sy` 等）映射成业务分类；未命中则归为“其他”。
+- **区域解析**：优先匹配设备名中的楼层与方位缩写（如 `F-WS`、`F-WN` 等），其次匹配 243/238/249 等层号，未命中则归为"其他"。
+- **设备类型解析**：通过设备名内置关键字或缩写（如 `kt`、`fj`、`sy` 等）映射成业务分类；未命中则归为"其他"。
 
 ### 设备画像生成口径
 
@@ -373,7 +368,7 @@ GROUP BY hour ORDER BY hour DESC LIMIT 48;
 
 ```
 ele/
-├── docker-compose.yml      # Docker 编排
+├── docker-compose.yml      # Docker 编排（含 FlowiseAI）
 ├── Dockerfile              # 应用镜像
 ├── pyproject.toml          # 项目依赖
 ├── README.md               # 本文档
@@ -408,14 +403,14 @@ ele/
 │   │   └── sms.py          # 短信发送（抽象层）
 │   │
 │   └── mcp/                # MCP Server
-│       └── server.py       # AI 工具服务（stdio + SSE）
+│       └── server.py       # AI 工具服务（stdio + Streamable HTTP）
 │
 ├── tests/                  # 测试用例
 │
 ├── data_extracted/         # Excel 数据（需解压）
 │
 ├── docs/
-│   ├── dify-system-prompt.md  # Dify Agent 系统提示词
+│   ├── system-prompt.md    # Agent 系统提示词
 │   └── plans/              # 设计文档
 ```
 
@@ -454,10 +449,7 @@ db.close()
 ```bash
 # 停止应用（Ctrl+C）
 
-# 停止 Dify
-cd dify/docker && docker compose down
-
-# 停止数据库
+# 停止所有 Docker 服务
 docker-compose down
 
 # 停止并删除数据库数据

@@ -29,5 +29,22 @@ services:
     volumes:
       - ./data_extracted:/app/data_extracted:ro
 
+  flowise:
+    image: flowiseai/flowise:latest
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - DATABASE_TYPE=sqlite
+      - DATABASE_PATH=/root/.flowise
+      - FLOWISE_SECRETKEY_OVERWRITE=${FLOWISE_SECRET_KEY:-flowise-secret}
+      - LOG_LEVEL=info
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+    ports:
+      - "13000:3000"
+    volumes:
+      - flowise_data:/root/.flowise
+
 volumes:
   pgdata:
+  flowise_data:

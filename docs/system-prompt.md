@@ -1,6 +1,6 @@
-# Dify Agent 系统提示词
+# Agent 系统提示词
 
-复制以下内容到 Dify Agent 的「系统提示词」设置中：
+复制以下内容到 FlowiseAI Agent 的 System Message 中：
 
 ---
 
