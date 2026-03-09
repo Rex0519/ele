@@ -28,6 +28,7 @@ services:
       - "8001:8001"
     volumes:
       - ./data_extracted:/app/data_extracted:ro
+      - ./data_export:/app/data_export
 
   flowise:
     image: flowiseai/flowise:latest
