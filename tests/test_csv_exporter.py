@@ -113,3 +113,24 @@ def test_metadata_json_structure(mock_db, export_dir):
     assert "tables" in meta
     assert "devices" in meta["tables"]
     assert "electric_data" in meta["tables"]
+
+
+def test_run_daily_export_calls_exporter(monkeypatch, tmp_path):
+    import src.scheduler as sched
+
+    called = {}
+
+    class FakeExporter:
+        def __init__(self, db, export_dir="data_export"):
+            called["init"] = True
+
+        def export_all(self):
+            called["export"] = True
+
+    monkeypatch.setattr("src.scheduler.CsvExporter", FakeExporter)
+    monkeypatch.setattr("src.scheduler.get_db", lambda: iter([MagicMock()]))
+
+    sched.run_daily_export()
+
+    assert called.get("init") is True
+    assert called.get("export") is True

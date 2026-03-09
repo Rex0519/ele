@@ -2,6 +2,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from src.config import settings
 from src.db import get_db
+from src.export import CsvExporter
 from src.simulator import SimulationGenerator
 from src.alert import AlertDetector
 from src.alert.feishu import FeishuSender
@@ -25,8 +26,19 @@ def run_hourly_tasks():
         db.close()
 
 
+def run_daily_export():
+    db = next(get_db())
+    try:
+        exporter = CsvExporter(db)
+        exporter.export_all()
+        print("CSV export completed")
+    finally:
+        db.close()
+
+
 def start_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler()
     scheduler.add_job(run_hourly_tasks, "cron", minute=0)
+    scheduler.add_job(run_daily_export, "cron", hour=2)
     scheduler.start()
     return scheduler
