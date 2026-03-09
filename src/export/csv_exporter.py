@@ -22,7 +22,7 @@ class CsvExporter:
         self._write_metadata()
 
     def _export_areas(self):
-        areas = self.db.query(ConfigArea).all()
+        areas = self.db.query(ConfigArea).filter(ConfigArea.is_delete == 0).all()
         self._write_csv(
             "areas.csv",
             ["config_id", "name", "parent_id", "level", "energy_type", "park_id"],
