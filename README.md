@@ -11,6 +11,7 @@
 - **REST API**：完整的设备管理、电力数据查询、告警管理接口
 - **MCP Server**：支持 stdio 和 Streamable HTTP 双传输模式，供 Claude Desktop 和 FlowiseAI 等 AI 平台调用
 - **定时调度**：每小时自动生成仿真数据并执行告警检测
+- **CSV 离线导出**：每日自动导出数据到 CSV 文件，供 OpenClaw 等 AI Agent 通过 pandas 做离线分析
 
 ## 系统架构
 
@@ -18,6 +19,7 @@
 管理层用户 ──自然语言对话──→ FlowiseAI Agent ──MCP/HTTP──→ FastAPI + MCP Server ──→ PostgreSQL
                                                             ↑
                                         APScheduler ──告警检测──→ 飞书 Webhook
+                                                   └──CSV导出──→ data_export/ ──→ OpenClaw Agent
 ```
 
 ## 技术栈
@@ -402,17 +404,57 @@ ele/
 │   │   ├── rules.py        # 告警规则
 │   │   └── sms.py          # 短信发送（抽象层）
 │   │
-│   └── mcp/                # MCP Server
-│       └── server.py       # AI 工具服务（stdio + Streamable HTTP）
+│   ├── mcp/                # MCP Server
+│   │   └── server.py       # AI 工具服务（stdio + Streamable HTTP）
+│   │
+│   └── export/             # CSV 离线导出
+│       └── csv_exporter.py # 数据导出器
 │
 ├── tests/                  # 测试用例
 │
 ├── data_extracted/         # Excel 数据（需解压）
+├── data_export/            # CSV 导出目录（自动生成，已 gitignore）
 │
 ├── docs/
 │   ├── system-prompt.md    # Agent 系统提示词
 │   └── plans/              # 设计文档
 ```
+
+## CSV 离线导出与 OpenClaw 集成
+
+系统每天凌晨 02:00 自动将数据库数据导出为 CSV 文件到 `data_export/` 目录（通过 Docker volume 映射到宿主机）。
+
+### 导出文件
+
+| 文件 | 说明 |
+|------|------|
+| `areas.csv` | 区域配置 |
+| `devices.csv` | 设备列表（含区域、类型、测点） |
+| `electric_data.csv` | 近 30 天逐小时用电数据 |
+| `alerts.csv` | 告警记录 |
+| `_metadata.json` | 导出元信息、表关系、字段说明 |
+
+### 手动触发导出
+
+```python
+from src.db import get_db
+from src.export import CsvExporter
+
+db = next(get_db())
+CsvExporter(db).export_all()
+db.close()
+```
+
+### OpenClaw Skill
+
+安装 `electric-analysis` skill 后，OpenClaw agent 可自动分析导出的电力数据：
+
+```bash
+# skill 文件位置
+~/.openclaw/skills/electric-analysis/SKILL.md
+```
+
+支持的分析场景：区域用电排名、日环比对比、设备类型分布、异常设备检测、时段用电模式。也支持自定义查询（agent 根据 schema 自行生成 pandas 代码）。
 
 ## 开发
 
