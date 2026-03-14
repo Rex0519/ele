@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from src.db import get_db, Alert, ThresholdConfig
+from src.db import get_db, Alert, DeviceProfile, ThresholdConfig
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -15,6 +15,9 @@ class AlertResponse(BaseModel):
     id: int
     device_id: int | None
     point_id: str | None
+    device_name: str | None = None
+    device_type: str | None = None
+    area_name: str | None = None
     alert_type: str
     severity: str
     message: str | None
@@ -42,11 +45,14 @@ class ThresholdConfigUpdate(BaseModel):
     severity: str | None = None
 
 
-def _alert_to_response(a: Alert) -> AlertResponse:
+def _alert_to_response(a: Alert, profile: DeviceProfile | None = None) -> AlertResponse:
     return AlertResponse(
         id=a.id,
         device_id=a.device_id,
         point_id=a.point_id,
+        device_name=profile.display_name if profile else None,
+        device_type=profile.device_type if profile else None,
+        area_name=profile.area_name if profile else None,
         alert_type=a.alert_type,
         severity=a.severity,
         message=a.message,
@@ -64,22 +70,25 @@ def list_alerts(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Alert)
+    query = db.query(Alert, DeviceProfile).outerjoin(
+        DeviceProfile, Alert.point_id == DeviceProfile.point_id
+    )
     if severity:
         query = query.filter(Alert.severity == severity)
-    alerts = query.order_by(Alert.created_at.desc()).limit(limit).offset(offset).all()
-    return [_alert_to_response(a) for a in alerts]
+    rows = query.order_by(Alert.created_at.desc()).limit(limit).offset(offset).all()
+    return [_alert_to_response(a, p) for a, p in rows]
 
 
 @router.get("/active", response_model=list[AlertResponse])
 def list_active_alerts(db: Session = Depends(get_db)):
-    alerts = (
-        db.query(Alert)
+    rows = (
+        db.query(Alert, DeviceProfile)
+        .outerjoin(DeviceProfile, Alert.point_id == DeviceProfile.point_id)
         .filter(Alert.resolved_at.is_(None))
         .order_by(Alert.created_at.desc())
         .all()
     )
-    return [_alert_to_response(a) for a in alerts]
+    return [_alert_to_response(a, p) for a, p in rows]
 
 
 @router.post("/{alert_id}/resolve")

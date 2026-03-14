@@ -21,17 +21,29 @@ def test_check_threshold_normal():
 
 
 def test_check_trend_spike():
-    result = check_trend(current=180.0, previous=100.0)
+    result = check_trend(current=400.0, previous=100.0)
     assert result is not None
     assert result["type"] == AlertType.TREND_SPIKE
 
 
+def test_check_trend_spike_high_severity():
+    result = check_trend(current=800.0, previous=100.0)
+    assert result is not None
+    assert result["severity"] == "HIGH"
+
+
 def test_check_trend_drop():
-    result = check_trend(current=20.0, previous=100.0)
+    result = check_trend(current=3.0, previous=100.0)
     assert result is not None
     assert result["type"] == AlertType.TREND_DROP
 
 
+def test_check_trend_drop_high_severity():
+    result = check_trend(current=1.0, previous=100.0)
+    assert result is not None
+    assert result["severity"] == "HIGH"
+
+
 def test_check_trend_normal():
-    result = check_trend(current=110.0, previous=100.0)
+    result = check_trend(current=250.0, previous=100.0)
     assert result is None

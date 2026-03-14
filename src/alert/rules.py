@@ -41,24 +41,26 @@ def check_threshold(
 def check_trend(
     current: float,
     previous: float,
-    spike_ratio: float = 1.5,
-    drop_ratio: float = 0.3,
+    spike_ratio: float = 3.5,
+    drop_ratio: float = 0.05,
 ) -> dict | None:
     if previous <= 0:
         return None
 
     ratio = current / previous
     if ratio > spike_ratio:
+        severity = Severity.HIGH if ratio > spike_ratio * 2 else Severity.WARNING
         return {
             "type": AlertType.TREND_SPIKE,
-            "severity": Severity.WARNING,
+            "severity": severity,
             "message": f"同比增长 {(ratio - 1) * 100:.1f}%",
             "threshold": previous * spike_ratio,
         }
     if ratio < drop_ratio:
+        severity = Severity.HIGH if ratio < drop_ratio / 2 else Severity.WARNING
         return {
             "type": AlertType.TREND_DROP,
-            "severity": Severity.WARNING,
+            "severity": severity,
             "message": f"同比下降 {(1 - ratio) * 100:.1f}%",
             "threshold": previous * drop_ratio,
         }

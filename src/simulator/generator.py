@@ -9,7 +9,7 @@ from src.db.models import DeviceProfile, ElectricData
 from src.simulator.profiles import get_time_factor
 
 
-def generate_increment(mean: float, std: float, hour: int, anomaly_rate: float = 0.03) -> float:
+def generate_increment(mean: float, std: float, hour: int, anomaly_rate: float = 0.003) -> float:
     """生成符合时段特征的增量，有小概率产生异常值"""
     time_factor = get_time_factor(hour)
     base = mean * time_factor
